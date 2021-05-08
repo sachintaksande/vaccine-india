@@ -1,0 +1,55 @@
+{
+    "listeners": [
+        {
+            "state": "Maharashtra",
+            "district": "Chandrapur",
+            "pin": "",
+            "receivers": [
+                "sachintaksande@gmail.com"
+            ],
+            "filters": {
+                "minAge": 18,
+                "vaccine": "",
+                "fees": "",
+                "minSlots": 1
+            }
+        },
+        {
+            "state": "Maharashtra",
+            "district": "Nagpur",
+            "pin": "",
+            "receivers": [
+                "sachintaksande@gmail.com"
+            ],
+            "filters": {
+                "minAge": 18,
+                "vaccine": "",
+                "fees": "",
+                "minSlots": 1
+            }
+        },
+        {
+            "state": "Maharashtra",
+            "district": "Pune",
+            "pin": "",
+            "receivers": [
+                "sachintaksande@gmail.com"
+            ],
+            "filters": {
+                "minAge": 18,
+                "vaccine": "",
+                "fees": "",
+                "minSlots": 1
+            }
+        }
+    ],
+    "notificationConfigs": {
+        "smtp": {
+            "host": "smtp.gmail.com",
+            "port": "587",
+            "email": "email-from-gmail",
+            "password": "password-of-email"
+        }
+    },
+    "pollingInterval": "900"
+}
