@@ -154,50 +154,62 @@ func validateListeners(config *Configuration, stateDistrictMap map[string]map[st
 }
 
 func startListeningAndNotifying(config *Configuration, stateDistrictMap map[string]map[string]int) {
+	fmt.Println("The below listners are configured:")
+	fmt.Println(fmt.Sprintf("%v", config.Listeners))
 	scheduler := gocron.NewScheduler(time.UTC)
 	scheduler.Every(getPollingInterval(config)).Seconds().Do(func() {
-		for _, loopVar := range config.Listeners {
-			listener := loopVar
+		fmt.Println("Polling Started at: " + time.Now().Local().Format(time.RFC850))
+		for _, listener := range config.Listeners {
 			url := ""
-			dateStr := time.Now().Local().Format("02-01-2006")
-			if strings.TrimSpace(listener.Pin) != "" {
-				url = fmt.Sprintf("https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode=%s&date=%s",
-					strings.TrimSpace(listener.Pin), dateStr)
-			} else {
-				url = fmt.Sprintf("https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id=%d&date=%s",
-					getDistrictCode(stateDistrictMap, listener.State, listener.District), dateStr)
-			}
-			res, err := makeRequest(url)
-			handleError(err)
-			resBytes, err := ioutil.ReadAll(res.Body)
-			handleError(err)
-			logResponse(url, resBytes)
-			slots := &CowinSlots{}
-			err = json.Unmarshal(resBytes, slots)
-			handleError(err)
 			var filteredSlots []Slot
-			for _, center := range slots.Centers {
-				for _, session := range center.Sessions {
-					slotCount := 1
-					if listener.Filters.MinSlots > 0 {
-						slotCount = listener.Filters.MinSlots
-					}
-					if session.getRoundedAvailableCapacity() >= slotCount { // slots
-						if listener.Filters.MinAge == 0 || session.MinAgeLimit == listener.Filters.MinAge { // age
-							if listener.Filters.Fees == "" || strings.EqualFold(listener.Filters.Fees, center.FeeType) { //fees
-								if listener.Filters.Vaccine == "" || strings.EqualFold(listener.Filters.Vaccine, session.Vaccine) { //vaccine
-									filteredSlots = append(filteredSlots, Slot{
-										Center:         fmt.Sprintf("%s,%s,%s,%s,%s,%d", center.Name, center.Address, center.BlockName, center.DistrictName, center.StateName, center.Pincode),
-										AvailableSlots: fmt.Sprintf("%d", session.getRoundedAvailableCapacity()),
-										Date:           session.Date,
-										Vaccine:        session.Vaccine,
-										Age:            fmt.Sprintf("%d", session.MinAgeLimit),
-										FeeType:        center.FeeType,
-									})
+			dateStr := time.Now().Local().Format("02-01-2006")
+			nextWeekIncrement := 0
+			for dateStr != "" {
+				if strings.TrimSpace(listener.Pin) != "" {
+					url = fmt.Sprintf("https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode=%s&date=%s",
+						strings.TrimSpace(listener.Pin), dateStr)
+				} else {
+					url = fmt.Sprintf("https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id=%d&date=%s",
+						getDistrictCode(stateDistrictMap, listener.State, listener.District), dateStr)
+				}
+				fmt.Println("url to request: " + url)
+				res, err := makeRequest(url)
+				handleError(err)
+				resBytes, err := ioutil.ReadAll(res.Body)
+				handleError(err)
+				logResponse(url, resBytes)
+				slots := &CowinSlots{}
+				err = json.Unmarshal(resBytes, slots)
+				handleError(err)
+				for _, center := range slots.Centers {
+					for _, session := range center.Sessions {
+						slotCount := 1
+						if listener.Filters.MinSlots > 0 {
+							slotCount = listener.Filters.MinSlots
+						}
+						if session.getRoundedAvailableCapacity() >= slotCount { // slots
+							if listener.Filters.MinAge == 0 || session.MinAgeLimit == listener.Filters.MinAge { // age
+								if listener.Filters.Fees == "" || strings.EqualFold(listener.Filters.Fees, center.FeeType) { //fees
+									if listener.Filters.Vaccine == "" || strings.EqualFold(listener.Filters.Vaccine, session.Vaccine) { //vaccine
+										filteredSlots = append(filteredSlots, Slot{
+											Center:         fmt.Sprintf("%s,%s,%s,%s,%s,%d", center.Name, center.Address, center.BlockName, center.DistrictName, center.StateName, center.Pincode),
+											AvailableSlots: fmt.Sprintf("%d", session.getRoundedAvailableCapacity()),
+											Date:           session.Date,
+											Vaccine:        session.Vaccine,
+											Age:            fmt.Sprintf("%d", session.MinAgeLimit),
+											FeeType:        center.FeeType,
+										})
+									}
 								}
 							}
 						}
 					}
+				}
+				if len(slots.Centers) == 0 {
+					dateStr = ""
+				} else {
+					nextWeekIncrement++
+					dateStr = time.Now().AddDate(0, 0, nextWeekIncrement*7).Local().Format("02-01-2006")
 				}
 			}
 			if len(filteredSlots) == 0 {
@@ -216,7 +228,8 @@ func startListeningAndNotifying(config *Configuration, stateDistrictMap map[stri
 			emailBytes := body.Bytes()
 			logResponse("Email Body", emailBytes)
 			// Sending email.
-			err = smtp.SendMail(config.Notificationconfigs.SMTP.Host+":"+config.Notificationconfigs.SMTP.Port, auth,
+			fmt.Println(fmt.Sprintf("sending email to: %v", listener.Receivers))
+			err := smtp.SendMail(config.Notificationconfigs.SMTP.Host+":"+config.Notificationconfigs.SMTP.Port, auth,
 				config.Notificationconfigs.SMTP.Email, listener.Receivers, emailBytes)
 			handleError(err)
 		}
