@@ -156,10 +156,13 @@ func validateListeners(config *Configuration, stateDistrictMap map[string]map[st
 func startListeningAndNotifying(config *Configuration, stateDistrictMap map[string]map[string]int) {
 	fmt.Println("The below listners are configured:")
 	fmt.Println(fmt.Sprintf("%v", config.Listeners))
+
+	lastNotifiedSlots := map[int][]Slot{}
+
 	scheduler := gocron.NewScheduler(time.UTC)
 	scheduler.Every(getPollingInterval(config)).Seconds().Do(func() {
 		fmt.Println("Polling Started at: " + time.Now().Local().Format(time.RFC850))
-		for _, listener := range config.Listeners {
+		for index, listener := range config.Listeners {
 			url := ""
 			var filteredSlots []Slot
 			dateStr := time.Now().Local().Format("02-01-2006")
@@ -212,7 +215,11 @@ func startListeningAndNotifying(config *Configuration, stateDistrictMap map[stri
 					dateStr = time.Now().AddDate(0, 0, nextWeekIncrement*7).Local().Format("02-01-2006")
 				}
 			}
-			if len(filteredSlots) == 0 {
+			if len(filteredSlots) == 0 /* || slotsAlreadyNotified(lastNotifiedSlots[index], filteredSlots)*/ {
+				continue
+			}
+			if slotsAlreadyNotified(lastNotifiedSlots[index], filteredSlots) {
+				fmt.Println("The available slots have already been notified. skipping.")
 				continue
 			}
 			auth := smtp.PlainAuth("", config.Notificationconfigs.SMTP.Email, config.Notificationconfigs.SMTP.Password, config.Notificationconfigs.SMTP.Host)
@@ -227,15 +234,36 @@ func startListeningAndNotifying(config *Configuration, stateDistrictMap map[stri
 			t.Execute(&body, filteredSlots)
 			emailBytes := body.Bytes()
 			logResponse("Email Body", emailBytes)
-			// Sending email.
+			// Sending email
 			fmt.Println(fmt.Sprintf("sending email to: %v", listener.Receivers))
 			err := smtp.SendMail(config.Notificationconfigs.SMTP.Host+":"+config.Notificationconfigs.SMTP.Port, auth,
 				config.Notificationconfigs.SMTP.Email, listener.Receivers, emailBytes)
 			handleError(err)
+			lastNotifiedSlots[index] = filteredSlots
 		}
 	})
 	scheduler.SingletonMode()
 	scheduler.StartBlocking()
+}
+
+func slotsAlreadyNotified(lastNotifiedSlots, currentSlots []Slot) bool {
+	if len(lastNotifiedSlots) != len(currentSlots) {
+		return false
+	}
+	existsMap := map[Slot]int{}
+	for _, oneSlot := range lastNotifiedSlots {
+		existsMap[oneSlot]++
+	}
+	for _, oneSlot := range currentSlots {
+		if _, ok := existsMap[oneSlot]; !ok {
+			return false
+		}
+		existsMap[oneSlot] = existsMap[oneSlot] - 1
+		if existsMap[oneSlot] == 0 {
+			delete(existsMap, oneSlot)
+		}
+	}
+	return len(existsMap) == 0
 }
 
 func makeRequest(url string) (*http.Response, error) {
