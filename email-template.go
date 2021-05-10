@@ -27,6 +27,7 @@ const EMAIL_TEMPLATE = `
 
 <body>
     <h2>Vaccine Availability</h2>
+    <h4>The slots get booked very fast. Please hurry booking process for better possibility</h4>
     <table>
         <tr>
             <th>Center Name</th>
