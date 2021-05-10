@@ -155,9 +155,9 @@ func validateListeners(config *Configuration, stateDistrictMap map[string]map[st
 
 func startListeningAndNotifying(config *Configuration, stateDistrictMap map[string]map[string]int) {
 	fmt.Println("The below listners are configured:")
-	fmt.Println(fmt.Sprintf("%v", config.Listeners))
+	fmt.Println(fmt.Sprintf("%+v", config.Listeners))
 
-	lastNotifiedSlots := map[int][]Slot{}
+	lastNotifiedSlotsMap := map[string][]Slot{}
 
 	scheduler := gocron.NewScheduler(time.UTC)
 	scheduler.Every(getPollingInterval(config)).Seconds().Do(func() {
@@ -216,16 +216,17 @@ func startListeningAndNotifying(config *Configuration, stateDistrictMap map[stri
 				}
 			}
 			if len(filteredSlots) == 0 /* || slotsAlreadyNotified(lastNotifiedSlots[index], filteredSlots)*/ {
+				fmt.Println("No slots available.")
 				continue
 			}
-			if slotsAlreadyNotified(lastNotifiedSlots[index], filteredSlots) {
+			if slotsAlreadyNotified(lastNotifiedSlotsMap[createKey(index)], filteredSlots) {
 				fmt.Println("The available slots have already been notified. skipping.")
 				continue
 			}
 			auth := smtp.PlainAuth("", config.Notificationconfigs.SMTP.Email, config.Notificationconfigs.SMTP.Password, config.Notificationconfigs.SMTP.Host)
 
-			t, _ := template.New("Email").Parse(EMAIL_TEMPLATE)
-
+			t, err := template.New("Email").Parse(EMAIL_TEMPLATE)
+			handleError(err)
 			var body bytes.Buffer
 
 			mimeHeaders := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
@@ -235,15 +236,19 @@ func startListeningAndNotifying(config *Configuration, stateDistrictMap map[stri
 			emailBytes := body.Bytes()
 			logResponse("Email Body", emailBytes)
 			// Sending email
-			fmt.Println(fmt.Sprintf("sending email to: %v", listener.Receivers))
-			err := smtp.SendMail(config.Notificationconfigs.SMTP.Host+":"+config.Notificationconfigs.SMTP.Port, auth,
+			fmt.Println(fmt.Sprintf("sending email to: %+v", listener.Receivers))
+			err = smtp.SendMail(config.Notificationconfigs.SMTP.Host+":"+config.Notificationconfigs.SMTP.Port, auth,
 				config.Notificationconfigs.SMTP.Email, listener.Receivers, emailBytes)
 			handleError(err)
-			lastNotifiedSlots[index] = filteredSlots
+			lastNotifiedSlotsMap[createKey(index)] = filteredSlots
 		}
 	})
 	scheduler.SingletonMode()
 	scheduler.StartBlocking()
+}
+
+func createKey(index int) string {
+	return fmt.Sprintf("index-%d", index)
 }
 
 func slotsAlreadyNotified(lastNotifiedSlots, currentSlots []Slot) bool {
@@ -252,7 +257,7 @@ func slotsAlreadyNotified(lastNotifiedSlots, currentSlots []Slot) bool {
 	}
 	existsMap := map[Slot]int{}
 	for _, oneSlot := range lastNotifiedSlots {
-		existsMap[oneSlot]++
+		existsMap[oneSlot] = existsMap[oneSlot] + 1
 	}
 	for _, oneSlot := range currentSlots {
 		if _, ok := existsMap[oneSlot]; !ok {
