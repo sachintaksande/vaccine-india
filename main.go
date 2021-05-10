@@ -27,6 +27,8 @@ func main() {
 	var configFilePath string
 	flag.StringVar(&configFilePath, "config-file", "./config.json", "path of the config.json file")
 
+	flag.Parse()
+
 	if strings.TrimSpace(configFilePath) == "" {
 		handleError(errors.New("the value of -config-file needs to be a path to a valid config.json file"))
 	}
